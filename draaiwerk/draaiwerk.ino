@@ -100,7 +100,7 @@ void setup(void)
     Bluefruit.begin();
     Bluefruit.setTxPower(0);
     Bluefruit.autoConnLed(false);
-    Bluefruit.setName("DraaiWerk");
+    Bluefruit.setName("TelWerk");
     Bluefruit.Advertising.setType(BLE_GAP_ADV_TYPE_NONCONNECTABLE_NONSCANNABLE_UNDIRECTED);
     Bluefruit.Advertising.setIntervalMS(1000, 10000);
 
