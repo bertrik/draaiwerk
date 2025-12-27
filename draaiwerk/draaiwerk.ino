@@ -49,6 +49,12 @@ static void update_advertisement(uint32_t sequence, uint32_t value)
     data[index++] = (vbat >> 8) & 0xFF;
     data[index++] = (vbat >> 0) & 0xFF;
 
+    // placeholder for message authentication code
+    data[index++] = 0;
+    data[index++] = 0;
+    data[index++] = 0;
+    data[index++] = 0;
+
     // update advertising data
     Bluefruit.Advertising.stop();
     Bluefruit.Advertising.clearData();
