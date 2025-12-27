@@ -2,13 +2,25 @@
 #include <bluefruit.h>
 
 #include <RotaryEncoder.h>
+#include <FRAM.h>
+#include <MiniShell.h>
 
 #define PIN_A     PIN_006
 #define PIN_B     PIN_008
 #define PIN_BATT  PIN_004
 
+// #define HAVE_FRAM
+
+typedef struct {
+    uint32_t sequence;
+    uint32_t count;
+} nvdata_t;
+
+static MiniShell shell(&Serial);
+static FRAM fram;
 static volatile int32_t counter = 0x12345678;
 static uint32_t _sequence = 0;
+static nvdata_t nvdata;
 
 static void update_advertisement(uint32_t sequence, uint32_t value)
 {
@@ -49,8 +61,30 @@ static void update_advertisement(uint32_t sequence, uint32_t value)
 static void encoder_callback(int step)
 {
     counter += step;
+#ifdef HAVE_FRAM
+    fram.writeObject(0, nvdata);
+#endif
     update_advertisement(_sequence++, counter);
 }
+
+static int do_clear(int argc, char *argv[])
+{
+    if (argc > 1) {
+        if (strcmp(argv[1], "yes") == 0) {
+            printf("Clearing non-volatile data\n");
+            memset(&nvdata, 0, sizeof(nvdata));
+            fram.writeObject(0, nvdata);
+            return 0;
+        }
+    }
+    printf("Add 'yes' if you are sure to clear the non-volatile data\n");
+    return -1;
+}
+
+static cmd_t commands[] = {
+    { "clear", do_clear, "<yes> Clear non-volatile data" },
+    { NULL, NULL, NULL }
+};
 
 void setup(void)
 {
@@ -71,6 +105,13 @@ void setup(void)
     RotaryEncoder.setSampler(QDEC_SAMPLEPER_SAMPLEPER_1024us);
     RotaryEncoder.setCallback(encoder_callback);
     RotaryEncoder.start();
+
+    // FRAM init
+#ifdef HAVE_FRAM
+    if (fram.begin() == 0) {
+        fram.readObject(0, nvdata);
+    }
+#endif
 }
 
 void loop(void)
@@ -86,5 +127,5 @@ void loop(void)
             update_advertisement(_sequence++, counter);
         }
     }
-
+    shell.process(">", commands);
 }
