@@ -9,13 +9,12 @@
 #define I2C_SLAVE_ADDR 0x42
 
 static MiniShell shell(&Serial);
-static int i2c_index = 0;
-static uint8_t i2c_cmd_data[256];
-static size_t i2c_cmd_len = 0;
-static uint8_t i2c_rsp_data[256];
 static size_t i2c_rsp_len = 0;
+static uint8_t i2c_rsp_buf[256];
+static uint32_t lower = 0;
+static uint32_t upper = 0;
 
-static void handle_manufacturer_data(uint8_t *data, uint8_t len)
+static void handle_manufacturer_data(const uint8_t *data, uint8_t len)
 {
     printf("Manufacturer Data (%2d bytes):", len);
     for (uint8_t i = 0; i < len; i++) {
@@ -53,34 +52,48 @@ static void scan_callback(ble_gap_evt_adv_report_t *report)
     Bluefruit.Scanner.resume();
 }
 
+static size_t handle_smbus_command(uint8_t cmd, uint8_t *rsp_buf)
+{
+    size_t idx = 0;
+
+    printf("Got SMBUS cmd 0x%02X", cmd);
+
+    switch (cmd) {
+    case 0x10:                 // "perform"
+        // nothing to do
+        break;
+    case 0x11:                 // "read", prepare response buffer
+        rsp_buf[idx++] = (lower >> 24) & 0xFF;
+        rsp_buf[idx++] = (lower >> 16) & 0xFF;
+        rsp_buf[idx++] = (lower >> 8) & 0xFF;
+        rsp_buf[idx++] = (lower >> 0) & 0xFF;
+        rsp_buf[idx++] = (upper >> 24) & 0xFF;
+        rsp_buf[idx++] = (upper >> 16) & 0xFF;
+        rsp_buf[idx++] = (upper >> 8) & 0xFF;
+        rsp_buf[idx++] = (upper >> 0) & 0xFF;
+        break;
+    default:
+        break;
+    }
+    return idx;
+}
+
 static void i2c_on_master_write(int num)
 {
-    if (num < 1) {
-        return;
-    }
-
-    i2c_index = Wire.read();
-    if (num > 1) {
-        i2c_cmd_len = 0;
-        while (Wire.available()) {
-            uint8_t b = Wire.read();
-            if (i2c_cmd_len < sizeof(i2c_cmd_data)) {
-                i2c_cmd_data[i2c_cmd_len++] = b;
-            }
-        }
-        // TODO verify CRC
+    // we understand only one kind of i2c message, an smbus byte write
+    if (num == 1) {
+        uint8_t cmd = Wire.read();
+        i2c_rsp_len = handle_smbus_command(cmd, i2c_rsp_buf);
     }
 }
 
 static void i2c_on_master_read(void)
 {
+    // just send prepared i2c buffer
     Wire.write(i2c_rsp_len);
     if (i2c_rsp_len > 0) {
-        Wire.write(i2c_rsp_data, i2c_rsp_len);
+        Wire.write(i2c_rsp_buf, i2c_rsp_len);
     }
-    // TODO append CRC
-    Wire.write(0);
-    Wire.write(0);
 }
 
 static int do_start(int argc, char *argv[])
@@ -110,7 +123,7 @@ void setup(void)
     // bluetooth scan setup
     Bluefruit.begin();
     Bluefruit.setTxPower(0);
-    Bluefruit.setName("nRF52840-Scanner");
+    Bluefruit.setName("draaiwerk-ontvanger");
     Bluefruit.Scanner.setRxCallback(scan_callback);
     Bluefruit.Scanner.setIntervalMS(160, 80);
     Bluefruit.Scanner.useActiveScan(false);     // passive scan

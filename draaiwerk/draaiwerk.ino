@@ -8,8 +8,9 @@
 #define PIN_BATT  PIN_004
 
 static volatile int32_t counter = 0x12345678;
+static uint32_t _sequence = 0;
 
-static void update_advertisement(int32_t count)
+static void update_advertisement(uint32_t sequence, uint32_t value)
 {
     // prepare data
     uint8_t data[16];
@@ -18,15 +19,23 @@ static void update_advertisement(int32_t count)
     // company identifier
     data[index++] = 0xFF;
     data[index++] = 0xFF;
-    // counter (big endian)
-    data[index++] = (count >> 0) & 0xFF;
-    data[index++] = (count >> 8) & 0xFF;
-    data[index++] = (count >> 16) & 0xFF;
-    data[index++] = (count >> 24) & 0xFF;
+
+    // sequence
+    data[index++] = (sequence >> 24) & 0xFF;
+    data[index++] = (sequence >> 16) & 0xFF;
+    data[index++] = (sequence >> 8) & 0xFF;
+    data[index++] = (sequence >> 0) & 0xFF;
+
+    // counter value (big endian)
+    data[index++] = (value >> 24) & 0xFF;
+    data[index++] = (value >> 16) & 0xFF;
+    data[index++] = (value >> 8) & 0xFF;
+    data[index++] = (value >> 0) & 0xFF;
+
     // battery voltage (mV)
     uint16_t vbat = analogRead(PIN_BATT) * 1.4 * 3600 / 1024;
-    data[index++] = (vbat >> 0) & 0xFF;
     data[index++] = (vbat >> 8) & 0xFF;
+    data[index++] = (vbat >> 0) & 0xFF;
 
     // update advertising data
     Bluefruit.Advertising.stop();
@@ -40,7 +49,7 @@ static void update_advertisement(int32_t count)
 static void encoder_callback(int step)
 {
     counter += step;
-    update_advertisement(counter);
+    update_advertisement(_sequence++, counter);
 }
 
 void setup(void)
@@ -73,8 +82,8 @@ void loop(void)
         last_second = seconds;
         if (seconds % 10 == 0) {
             counter++;
-            printf("Counter: 0x%08X\n", (unsigned int)counter);
-            update_advertisement(counter);
+            printf("Counter: 0x%08X\n", (unsigned int) counter);
+            update_advertisement(_sequence++, counter);
         }
     }
 
