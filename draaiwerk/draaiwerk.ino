@@ -19,10 +19,9 @@ typedef struct {
 static MiniShell shell(&Serial);
 static FRAM fram;
 static volatile int32_t counter = 0x12345678;
-static uint32_t _sequence = 0;
 static nvdata_t nvdata;
 
-static void update_advertisement(uint32_t sequence, uint32_t value)
+static void update_advertisement(uint32_t sequence, uint32_t count)
 {
     // prepare data
     uint8_t data[16];
@@ -39,10 +38,10 @@ static void update_advertisement(uint32_t sequence, uint32_t value)
     data[index++] = (sequence >> 0) & 0xFF;
 
     // counter value (big endian)
-    data[index++] = (value >> 24) & 0xFF;
-    data[index++] = (value >> 16) & 0xFF;
-    data[index++] = (value >> 8) & 0xFF;
-    data[index++] = (value >> 0) & 0xFF;
+    data[index++] = (count >> 24) & 0xFF;
+    data[index++] = (count >> 16) & 0xFF;
+    data[index++] = (count >> 8) & 0xFF;
+    data[index++] = (count >> 0) & 0xFF;
 
     // battery voltage (mV)
     uint16_t vbat = analogRead(PIN_BATT) * 1.4 * 3600 / 1024;
@@ -66,11 +65,11 @@ static void update_advertisement(uint32_t sequence, uint32_t value)
 
 static void encoder_callback(int step)
 {
-    counter += step;
+    nvdata.count += step;
 #ifdef HAVE_FRAM
     fram.writeObject(0, nvdata);
 #endif
-    update_advertisement(_sequence++, counter);
+    update_advertisement(nvdata.sequence++, nvdata.count);
 }
 
 static int do_clear(int argc, char *argv[])
@@ -87,8 +86,18 @@ static int do_clear(int argc, char *argv[])
     return -1;
 }
 
+static int do_report(int argc, char *argv[])
+{
+    uint32_t seqnr = nvdata.sequence++;
+    uint32_t count = (argc > 1) ? atoi(argv[1]) : nvdata.count;
+    printf("Sending report: seqnr=%u, count=%u\n", seqnr, count);
+    update_advertisement(seqnr, count);
+    return 0;
+}
+
 static cmd_t commands[] = {
     { "clear", do_clear, "<yes> Clear non-volatile data" },
+    { "report", do_report, "[count] Send a report" },
     { NULL, NULL, NULL }
 };
 
@@ -118,20 +127,12 @@ void setup(void)
         fram.readObject(0, nvdata);
     }
 #endif
+
+    // send initial advertisement
+    update_advertisement(nvdata.sequence, nvdata.count);
 }
 
 void loop(void)
 {
-    static unsigned long last_second = -1;
-
-    unsigned long seconds = millis() / 1000;
-    if (seconds != last_second) {
-        last_second = seconds;
-        if (seconds % 10 == 0) {
-            counter++;
-            printf("Counter: 0x%08X\n", (unsigned int) counter);
-            update_advertisement(_sequence++, counter);
-        }
-    }
     shell.process(">", commands);
 }
