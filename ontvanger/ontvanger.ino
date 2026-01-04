@@ -4,15 +4,25 @@
 #include <Arduino.h>
 #include <bluefruit.h>
 #include <Wire.h>
+
+#include <FRAM.h>
 #include <MiniShell.h>
+
+#define PIN_POWER           PIN_013
+#define PIN_I2C_SLAVE_SDA   PIN_104
+#define PIN_I2C_SLAVE_SCL   PIN_106
+#define PIN_I2C_MASTER_SDA  PIN_010
+#define PIN_I2C_MASTER_SCL  PIN_009
 
 #define I2C_SLAVE_ADDR 0x42
 
 static MiniShell shell(&Serial);
+static FRAM fram(&Wire1);
 static size_t i2c_rsp_len = 0;
 static uint8_t i2c_rsp_buf[256];
 static uint32_t lower = 0;
 static uint32_t upper = 0;
+static bool have_fram = false;
 
 static void handle_manufacturer_data(const uint8_t *data, uint8_t len)
 {
@@ -110,15 +120,80 @@ static int do_stop(int argc, char *argv[])
     return 0;
 }
 
+// returns 0 if device detected
+static int i2c_detect(TwoWire *wire, int address)
+{
+    wire->beginTransmission(address);
+    return wire->endTransmission();
+}
+
+static int do_i2c_scan(int argc, char *argv[])
+{
+    int result;
+    for (int i = 0; i < 128; i++) {
+        char c;
+        if (i < 0x08) {
+            c = 'S';
+        } else {
+            result = i2c_detect(&Wire1, i);
+            switch (result) {
+                case 0: c = '!'; break;
+                case 2:
+                case 3: c = 'N'; break;
+                case 4: c = 'E'; break;
+                default:
+                    c = '?';
+                    break;
+            }
+        }
+        if ((i % 16) == 0) {
+            printf("\n%02X: ", i);
+        }
+        printf("%c", c);
+    }
+    printf("\n");
+    return 0;
+}
+
+static int do_fram(int argc, char *argv[])
+{
+    if (argc < 2) {
+        return -1;
+    }
+
+    char *cmd = argv[1];
+    if (strcmp(cmd, "begin") == 0) {
+        fram.begin();
+    }
+    if ((argc > 2) && strcmp(cmd, "r") == 0) {
+        int addr = atoi(argv[2]);
+        uint8_t b = fram.read8(addr);
+        printf("READ fram[0x%04X]=0x%02X\n", addr, b);
+    }
+    if ((argc > 3) && strcmp(cmd, "w") == 0) {
+        int addr = atoi(argv[2]);
+        uint8_t b = strtoul(argv[3], NULL, 0);
+        printf("WRITE fram[0x%04X]=0x%02X\n", addr, b);
+        fram.write8(addr, b);
+    }
+    return 0;
+}
+
 static cmd_t commands[] = {
     { "start", do_start, "Start scanning" },
     { "stop", do_stop, "Stop scanning" },
+    { "i2cscan", do_i2c_scan, "Perform an I2C scan" },
+    { "fram", do_fram, "<begin|r|w> [addr] [data]" },
     { NULL, NULL, NULL }
 };
 
 void setup(void)
 {
     Serial.begin(115200);
+
+    // power pin setup
+    pinMode(PIN_POWER, OUTPUT);
+    digitalWrite(PIN_POWER, 1);
 
     // bluetooth scan setup
     Bluefruit.begin();
@@ -130,9 +205,19 @@ void setup(void)
 
     // i2c slave setup
     Wire.begin(I2C_SLAVE_ADDR); // Start as I2C slave
+    Wire.setPins(PIN_I2C_SLAVE_SDA, PIN_I2C_SLAVE_SCL);
     Wire.onReceive(i2c_on_master_write);
     Wire.onRequest(i2c_on_master_read);
-    Wire.setPins(PIN_WIRE_SDA, PIN_WIRE_SCL);
+
+    // i2c master setup
+    Wire1.begin();
+    Wire1.setPins(PIN_I2C_MASTER_SDA, PIN_I2C_MASTER_SCL);
+
+    // fram setup
+    have_fram = (i2c_detect(&Wire1, 0x50) == 0);
+    if (have_fram) {
+        fram.begin();
+    }
 }
 
 void loop(void)

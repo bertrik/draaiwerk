@@ -76,10 +76,13 @@ extern "C"
 #define LED_BLUE PIN_114 //added so bluefruit compiles. not in use, 
 #endif                  //if you do wanna use it, change the PIN_114 to whatever you want
 
-#define WIRE_INTERFACES_COUNT 1
+#define WIRE_INTERFACES_COUNT 2
 
 #define PIN_WIRE_SDA 36
 #define PIN_WIRE_SCL 38
+
+#define PIN_WIRE1_SDA PIN_010
+#define PIN_WIRE1_SCL PIN_009
 
 #define SPI_INTERFACES_COUNT 1
 
