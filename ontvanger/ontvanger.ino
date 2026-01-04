@@ -137,13 +137,19 @@ static int do_i2c_scan(int argc, char *argv[])
         } else {
             result = i2c_detect(&Wire1, i);
             switch (result) {
-                case 0: c = '!'; break;
-                case 2:
-                case 3: c = 'N'; break;
-                case 4: c = 'E'; break;
-                default:
-                    c = '?';
-                    break;
+            case 0:
+                c = 'A';
+                break;
+            case 2:
+            case 3:
+                c = '.';
+                break;
+            case 4:
+                c = 'E';
+                break;
+            default:
+                c = '?';
+                break;
             }
         }
         if ((i % 16) == 0) {
@@ -162,8 +168,12 @@ static int do_fram(int argc, char *argv[])
     }
 
     char *cmd = argv[1];
-    if (strcmp(cmd, "begin") == 0) {
-        fram.begin();
+    if (strcmp(cmd, "info") == 0) {
+        uint16_t manuf = fram.getManufacturerID();
+        uint16_t prodid = fram.getProductID();
+        uint16_t sizekb = fram.getSize();
+        printf("Manufacturer id: 0x%04X, product id: 0x%04X, size(kB): %d\n",
+               manuf, prodid, sizekb);
     }
     if ((argc > 2) && strcmp(cmd, "r") == 0) {
         int addr = atoi(argv[2]);
@@ -183,7 +193,7 @@ static cmd_t commands[] = {
     { "start", do_start, "Start scanning" },
     { "stop", do_stop, "Stop scanning" },
     { "i2cscan", do_i2c_scan, "Perform an I2C scan" },
-    { "fram", do_fram, "<begin|r|w> [addr] [data]" },
+    { "fram", do_fram, "<info|r|w> [addr] [data]" },
     { NULL, NULL, NULL }
 };
 
