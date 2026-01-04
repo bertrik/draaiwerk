@@ -8,18 +8,20 @@
 #define PIN_A     PIN_006
 #define PIN_B     PIN_008
 #define PIN_BATT  PIN_004
+#define PIN_POWER PIN_013
 
 // #define HAVE_FRAM
 
 typedef struct {
     uint32_t sequence;
-    uint32_t count;
+    int32_t count;
 } nvdata_t;
 
 static MiniShell shell(&Serial);
 static FRAM fram;
 static volatile int32_t counter = 0x12345678;
 static nvdata_t nvdata;
+static volatile int count_event = false;
 
 static void update_advertisement(uint32_t sequence, uint32_t count)
 {
@@ -65,11 +67,7 @@ static void update_advertisement(uint32_t sequence, uint32_t count)
 
 static void encoder_callback(int step)
 {
-    nvdata.count += step;
-#ifdef HAVE_FRAM
-    fram.writeObject(0, nvdata);
-#endif
-    update_advertisement(nvdata.sequence++, nvdata.count);
+    count_event++;
 }
 
 static int do_clear(int argc, char *argv[])
@@ -95,15 +93,34 @@ static int do_report(int argc, char *argv[])
     return 0;
 }
 
+static int do_sim(int argc, char *argv[])
+{
+    if (argc > 1) {
+        int step = atoi(argv[1]);
+        printf("Simulating step %d\n", step);
+        encoder_callback(step);
+    }
+    return 0;
+}
+
 static cmd_t commands[] = {
     { "clear", do_clear, "<yes> Clear non-volatile data" },
     { "report", do_report, "[count] Send a report" },
+    { "sim", do_sim, "[step] Simulate quadrature step" },
     { NULL, NULL, NULL }
 };
 
 void setup(void)
 {
     Serial.begin(115200);
+
+    // LED init
+    pinMode(LED_BUILTIN, OUTPUT);
+    digitalWrite(LED_BUILTIN, 0);
+
+    // power pin setup
+    pinMode(PIN_POWER, OUTPUT);
+    digitalWrite(PIN_POWER, 1);
 
     // bluetooth init
     Bluefruit.begin();
@@ -119,6 +136,7 @@ void setup(void)
     RotaryEncoder.setDebounce(true);
     RotaryEncoder.setSampler(QDEC_SAMPLEPER_SAMPLEPER_1024us);
     RotaryEncoder.setCallback(encoder_callback);
+    RotaryEncoder.writeAbs(0);
     RotaryEncoder.start();
 
     // FRAM init
@@ -134,5 +152,21 @@ void setup(void)
 
 void loop(void)
 {
+    static volatile int last_event = -1;
+    static volatile int last_count = 0;
+
     shell.process(">", commands);
+
+    // if (count_event != last_event) {
+        // last_event = count_event;
+        nvdata.count = RotaryEncoder.readAbs();
+        if (nvdata.count != last_count) {
+            last_count = nvdata.count;
+            printf("Updated count: %u\n", nvdata.count);
+        }
+        // update_advertisement(nvdata.sequence++, nvdata.count);
+    // }
+
+    // digitalWrite(LED_BUILTIN, (millis() / 500) & 1);
+    digitalWrite(LED_BUILTIN, digitalRead(PIN_A));
 }
